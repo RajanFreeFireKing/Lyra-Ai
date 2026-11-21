@@ -23,6 +23,12 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android SDK Licenses
+        run: yes | sdkmanager --licenses || true
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -30,21 +36,27 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Verify Flutter Installation
+      - name: Prepare Gradle Wrapper Permissions
+        run: |
+          cd android
+          chmod +x gradlew
+          if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
+            echo "Generating Gradle Wrapper..."
+            gradle wrapper --gradle-version 8.10.2 --distribution-type all
+          fi
+
+      - name: Verify Flutter & Environment
         run: flutter doctor -v
 
-      - name: Get Flutter Packages
+      - name: Get Dependencies
         run: flutter pub get
 
       - name: Build Release APK
-        run: flutter build apk --release --split-per-abi
-
-      - name: Build Universal APK
         run: flutter build apk --release
 
-      - name: Upload APK Artifacts
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Lyra-AI-Release-APKs
+          name: Lyra-AI-Release-APK
           path: build/app/outputs/flutter-apk/*.apk
           retention-days: 14

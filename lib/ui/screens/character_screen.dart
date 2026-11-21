@@ -134,7 +134,7 @@ class CharacterScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        "Voice: ${character.voice} (Gemini 2.0 Audio)",
+                        "Voice: ${character.voice} (Gemini 3.8 Audio)",
                         style: const TextStyle(fontSize: 12, color: Colors.white54),
                       ),
                     ],

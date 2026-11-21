@@ -366,11 +366,11 @@ class VoiceConversationController extends ChangeNotifier {
       } catch (_) {}
     }
 
-    // 2. Fallback to Gemini 2.0 Flash Brain using Gemini API Key
+    // 2. Fallback to Gemini 3.8 Flash Brain using Gemini API Key
     if (geminiApiKey.trim().isNotEmpty) {
       try {
         final url = Uri.parse(
-          '${ApiConfig.googleGenAiBaseUrl}/models/gemini-2.0-flash:generateContent?key=$geminiApiKey',
+          '${ApiConfig.googleGenAiBaseUrl}/models/gemini-3.8-flash:generateContent?key=$geminiApiKey',
         );
 
         final contents = <Map<String, dynamic>>[];

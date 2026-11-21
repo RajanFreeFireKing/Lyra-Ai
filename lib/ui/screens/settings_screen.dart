@@ -158,7 +158,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   obscureText: true,
                   style: const TextStyle(fontSize: 13.5),
                   decoration: InputDecoration(
-                    labelText: "Google AI Studio API Key (Gemini 2.0 Audio)",
+                    labelText: "Google AI Studio API Key (Gemini 3.8 Audio)",
                     labelStyle: TextStyle(color: Colors.white.withOpacity(0.65), fontSize: 13),
                     hintText: "AIzaSy...",
                     hintStyle: const TextStyle(color: Colors.white24),

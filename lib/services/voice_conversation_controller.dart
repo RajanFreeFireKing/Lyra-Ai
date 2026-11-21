@@ -32,12 +32,14 @@ class VoiceConversationController extends ChangeNotifier {
   String currentStatusText = "Tap to speak with Lyra";
   String lastUserTranscript = "";
   String lastAssistantReply = "";
+  double currentAudioRms = 0.0;
 
   final List<Map<String, String>> chatHistory = [];
   final List<int> _recordedPcmBytes = [];
   DateTime? _lastSpeechTime;
   bool _wasSpeechDetected = false;
 
+  Timer? _silenceTimer;
   GeminiLiveStt? _sttClient;
   GeminiSttRest? _sttRest;
   GeminiTtsClient? _ttsClient;
@@ -113,6 +115,7 @@ class VoiceConversationController extends ChangeNotifier {
     status = AssistantStatus.listening;
     currentStatusText = "Listening...";
     lastUserTranscript = "";
+    currentAudioRms = 0.0;
     _recordedPcmBytes.clear();
     _wasSpeechDetected = false;
     _lastSpeechTime = null;
@@ -135,22 +138,41 @@ class VoiceConversationController extends ChangeNotifier {
       return;
     }
 
+    // Audio Chunk Stream from Android Native
     _audioSubscription = NativeChannel.audioStream.listen((event) {
       final pcm = event['data'] as Uint8List?;
       final isSpeech = event['isSpeech'] as bool? ?? false;
+      final rms = (event['rms'] as num?)?.toDouble() ?? 0.0;
+
+      currentAudioRms = rms;
+      if (status == AssistantStatus.listening) {
+        notifyListeners();
+      }
 
       if (pcm != null && pcm.isNotEmpty) {
         _recordedPcmBytes.addAll(pcm);
         _sttClient?.sendAudioChunk(pcm);
       }
 
-      if (isSpeech) {
+      if (isSpeech || rms > 45.0) {
         _wasSpeechDetected = true;
         _lastSpeechTime = DateTime.now();
-      } else if (_wasSpeechDetected && _lastSpeechTime != null) {
+      }
+    });
+
+    // Independent Auto-Silence Clock Timer (checks every 200ms)
+    _silenceTimer?.cancel();
+    _silenceTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
+      if (status != AssistantStatus.listening) {
+        timer.cancel();
+        return;
+      }
+
+      if (_wasSpeechDetected && _lastSpeechTime != null) {
         final silenceMs = DateTime.now().difference(_lastSpeechTime!).inMilliseconds;
-        // User spoke and then paused for 850ms -> finish speech turn automatically
-        if (silenceMs > 850 && status == AssistantStatus.listening) {
+        // User spoke for at least ~0.3s (9600 bytes) and has been silent for >= 800ms
+        if (_recordedPcmBytes.length >= 9600 && silenceMs >= 800) {
+          timer.cancel();
           finishTurnManually();
         }
       }
@@ -161,8 +183,12 @@ class VoiceConversationController extends ChangeNotifier {
   Future<void> finishTurnManually() async {
     if (status != AssistantStatus.listening) return;
 
+    _silenceTimer?.cancel();
+    _silenceTimer = null;
+
     status = AssistantStatus.thinking;
-    currentStatusText = "Thinking...";
+    currentStatusText = "Transcribing speech...";
+    currentAudioRms = 0.0;
     notifyListeners();
     NativeChannel.updateOverlay("Thinking", "");
 
@@ -174,13 +200,22 @@ class VoiceConversationController extends ChangeNotifier {
 
     String userText = lastUserTranscript.trim();
 
-    // Fallback: If streaming STT gave no transcript, run Gemini REST audio transcription
-    if (userText.isEmpty && _recordedPcmBytes.length > 3200) {
-      currentStatusText = "Transcribing audio...";
-      notifyListeners();
+    // If WebSocket streaming gave no transcript, run Gemini REST audio transcription
+    if (userText.isEmpty && _recordedPcmBytes.length > 2000) {
       final pcmData = Uint8List.fromList(_recordedPcmBytes);
       _sttRest = GeminiSttRest(apiKey: geminiApiKey);
-      userText = await _sttRest!.transcribePcm(pcmData);
+      final restResult = await _sttRest!.transcribePcm(pcmData);
+
+      if (restResult.startsWith("ERROR:")) {
+        // Show exact diagnostic error on screen
+        status = AssistantStatus.idle;
+        currentStatusText = restResult;
+        notifyListeners();
+        NativeChannel.updateOverlay("Error", restResult);
+        _recordedPcmBytes.clear();
+        return;
+      }
+      userText = restResult.trim();
     }
 
     _recordedPcmBytes.clear();
@@ -199,8 +234,11 @@ class VoiceConversationController extends ChangeNotifier {
   }
 
   Future<void> cancelListening() async {
+    _silenceTimer?.cancel();
+    _silenceTimer = null;
     status = AssistantStatus.idle;
     currentStatusText = "Tap to speak with Lyra";
+    currentAudioRms = 0.0;
     notifyListeners();
     NativeChannel.updateOverlay("Ready", "");
 

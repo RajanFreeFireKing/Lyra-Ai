@@ -59,8 +59,8 @@ class GeminiSttRest {
 
   /// Transcribe audio buffer using Gemini multimodal audio REST endpoint
   Future<String> transcribePcm(Uint8List pcmData) async {
-    if (pcmData.length < 1600) return ""; // Less than 50ms of audio, ignore
-    if (apiKey.trim().isEmpty) return "";
+    if (pcmData.length < 1600) return ""; // Less than 50ms of audio
+    if (apiKey.trim().isEmpty) return "ERROR: Google API Key is missing";
 
     try {
       final wavData = pcmToWav(pcmData);
@@ -81,7 +81,7 @@ class GeminiSttRest {
                 }
               },
               {
-                "text": "Transcribe the spoken words in this audio exactly. Do not describe sounds, do not add introductory text or commentary. Return ONLY the verbatim transcribed words in whatever language was spoken (Hindi, Urdu, English, Hinglish). If there is no speech, return an empty string."
+                "text": "Transcribe the spoken words in this audio exactly. Do not describe background sounds. Return ONLY the verbatim transcribed words in whatever language was spoken (Hindi, Urdu, English, Hinglish). If there is no speech, return an empty string."
               }
             ]
           }
@@ -109,10 +109,18 @@ class GeminiSttRest {
             return text.trim();
           }
         }
+        return "";
+      } else {
+        try {
+          final err = jsonDecode(response.body);
+          final msg = err['error']?['message'] as String? ?? "HTTP ${response.statusCode}";
+          return "ERROR: $msg";
+        } catch (_) {
+          return "ERROR: HTTP ${response.statusCode}";
+        }
       }
-      return "";
-    } catch (_) {
-      return "";
+    } catch (e) {
+      return "ERROR: $e";
     }
   }
 }

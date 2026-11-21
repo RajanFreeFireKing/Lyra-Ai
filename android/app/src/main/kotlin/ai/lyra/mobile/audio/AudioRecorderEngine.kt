@@ -6,13 +6,14 @@ import android.media.AudioRecord
 import android.media.MediaRecorder
 import kotlinx.coroutines.*
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.sqrt
 
 /**
- * 16kHz 16-bit Mono AudioRecord engine with integrated VAD gate.
- * Streams speech chunks to Flutter via callback.
+ * 16kHz 16-bit Mono AudioRecord engine.
+ * Streams 100% of raw microphone PCM chunks to Flutter with real-time RMS amplitude.
  */
 class AudioRecorderEngine(
-    private val onAudioChunk: (ByteArray, Boolean) -> Unit
+    private val onAudioChunk: (ByteArray, Boolean, Float) -> Unit
 ) {
     private val sampleRate = 16000
     private val channelConfig = AudioFormat.CHANNEL_IN_MONO
@@ -22,7 +23,6 @@ class AudioRecorderEngine(
     private var audioRecord: AudioRecord? = null
     private val isRecording = AtomicBoolean(false)
     private var recordingJob: Job? = null
-    private val vadGate = VadGate(sampleRate)
 
     @SuppressLint("MissingPermission")
     fun startRecording(): Boolean {
@@ -45,19 +45,17 @@ class AudioRecorderEngine(
 
             audioRecord?.startRecording()
             isRecording.set(true)
-            vadGate.reset()
 
             recordingJob = CoroutineScope(Dispatchers.IO).launch {
                 val buffer = ByteArray(640) // 20ms chunks at 16kHz
                 while (isRecording.get() && isActive) {
                     val read = audioRecord?.read(buffer, 0, buffer.size) ?: -1
                     if (read > 0) {
-                        val chunk = if (read == buffer.size) buffer else buffer.copyOf(read)
-                        val speechChunk = vadGate.processChunk(chunk)
-                        val isSpeech = vadGate.isSpeechActive
-                        if (speechChunk != null) {
-                            onAudioChunk(speechChunk, isSpeech)
-                        }
+                        val chunk = if (read == buffer.size) buffer.clone() else buffer.copyOf(read)
+                        val rms = calculateRms(chunk)
+                        val isSpeech = rms > 45.0f // sensitive voice detection for mobile speech
+                        // NEVER discard audio! Stream 100% of raw PCM to Flutter
+                        onAudioChunk(chunk, isSpeech, rms)
                     }
                 }
             }
@@ -67,6 +65,21 @@ class AudioRecorderEngine(
             stopRecording()
             return false
         }
+    }
+
+    private fun calculateRms(pcm16: ByteArray): Float {
+        var sum = 0.0
+        val count = pcm16.size / 2
+        if (count == 0) return 0f
+
+        var i = 0
+        while (i < pcm16.size - 1) {
+            val sample = (pcm16[i].toInt() and 0xFF) or (pcm16[i + 1].toInt() shl 8)
+            val s = sample.toShort()
+            sum += (s * s).toDouble()
+            i += 2
+        }
+        return sqrt(sum / count).toFloat()
     }
 
     fun stopRecording() {
@@ -80,6 +93,5 @@ class AudioRecorderEngine(
             e.printStackTrace()
         }
         audioRecord = null
-        vadGate.reset()
     }
 }

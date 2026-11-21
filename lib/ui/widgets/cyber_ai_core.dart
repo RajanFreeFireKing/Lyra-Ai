@@ -7,6 +7,7 @@ class CyberAiCore extends StatefulWidget {
   final Color neonColor;
   final VoidCallback onTap;
   final double size;
+  final double audioRms;
 
   const CyberAiCore({
     super.key,
@@ -14,6 +15,7 @@ class CyberAiCore extends StatefulWidget {
     required this.neonColor,
     required this.onTap,
     this.size = 280,
+    this.audioRms = 0.0,
   });
 
   @override
@@ -41,7 +43,7 @@ class _CyberAiCoreState extends State<CyberAiCore> with TickerProviderStateMixin
 
     _waveController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
+      duration: const Duration(milliseconds: 1000),
     )..repeat();
   }
 
@@ -100,14 +102,13 @@ class _CyberAiCoreState extends State<CyberAiCore> with TickerProviderStateMixin
                   },
                 ),
 
-                // 2. Interactive Tactile Core (Center Button)
+                // 2. Interactive Tactile Core (Center Button with solid hit testing)
                 GestureDetector(
+                  behavior: HitTestBehavior.opaque,
                   onTapDown: (_) => setState(() => _isPressed = true),
-                  onTapUp: (_) {
-                    setState(() => _isPressed = false);
-                    widget.onTap();
-                  },
+                  onTapUp: (_) => setState(() => _isPressed = false),
                   onTapCancel: () => setState(() => _isPressed = false),
+                  onTap: widget.onTap,
                   child: AnimatedScale(
                     scale: _isPressed ? 0.92 : 1.0,
                     duration: const Duration(milliseconds: 120),
@@ -116,11 +117,11 @@ class _CyberAiCoreState extends State<CyberAiCore> with TickerProviderStateMixin
                       animation: _pulseController,
                       builder: (context, _) {
                         final pulseVal = _pulseController.value;
-                        final glowSpread = isActive ? 12.0 + (pulseVal * 18.0) : 6.0;
+                        final glowSpread = isActive ? 14.0 + (pulseVal * 20.0) : 6.0;
 
                         return Container(
-                          width: 128,
-                          height: 128,
+                          width: 130,
+                          height: 130,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             gradient: RadialGradient(
@@ -132,12 +133,12 @@ class _CyberAiCoreState extends State<CyberAiCore> with TickerProviderStateMixin
                               stops: const [0.0, 0.65, 1.0],
                             ),
                             border: Border.all(
-                              color: activeColor.withOpacity(isActive ? 0.9 : 0.45),
+                              color: activeColor.withOpacity(isActive ? 0.95 : 0.45),
                               width: 2.2,
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: activeColor.withOpacity(isActive ? 0.55 : 0.2),
+                                color: activeColor.withOpacity(isActive ? 0.6 : 0.2),
                                 blurRadius: glowSpread * 2,
                                 spreadRadius: glowSpread * 0.4,
                               ),
@@ -154,15 +155,15 @@ class _CyberAiCoreState extends State<CyberAiCore> with TickerProviderStateMixin
                               child: widget.status == AssistantStatus.listening
                                   ? Container(
                                       key: const ValueKey("stop_icon"),
-                                      width: 38,
-                                      height: 38,
+                                      width: 40,
+                                      height: 40,
                                       decoration: BoxDecoration(
                                         color: activeColor,
-                                        borderRadius: BorderRadius.circular(8),
+                                        borderRadius: BorderRadius.circular(10),
                                         boxShadow: [
                                           BoxShadow(
-                                            color: activeColor.withOpacity(0.8),
-                                            blurRadius: 14,
+                                            color: activeColor.withOpacity(0.85),
+                                            blurRadius: 16,
                                           )
                                         ],
                                       ),
@@ -207,17 +208,19 @@ class _CyberAiCoreState extends State<CyberAiCore> with TickerProviderStateMixin
   Widget _buildSoundWaveBars(Color color, bool active) {
     const barCount = 19;
     final progress = _waveController.value;
+    final normRms = (widget.audioRms / 200.0).clamp(0.0, 2.0);
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: List.generate(barCount, (i) {
         final distFromCenter = (i - (barCount / 2)).abs();
-        final maxH = 28.0 - (distFromCenter * 1.6);
+        final maxH = 28.0 - (distFromCenter * 1.5);
 
         double height;
         if (active) {
           final wave = sin(progress * 2 * pi + (i * 0.55)).abs();
-          height = 6.0 + (wave * maxH);
+          final ampBoost = 0.5 + (0.9 * normRms);
+          height = 5.0 + (wave * maxH * ampBoost).clamp(3.0, 36.0);
         } else {
           height = 4.0;
         }

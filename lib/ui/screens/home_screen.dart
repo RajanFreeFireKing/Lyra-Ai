@@ -164,6 +164,7 @@ class HomeScreen extends StatelessWidget {
                   CyberAiCore(
                     status: voice.status,
                     neonColor: neon,
+                    audioRms: voice.currentAudioRms,
                     onTap: () {
                       voice.toggleListening();
                     },

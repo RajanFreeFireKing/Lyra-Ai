@@ -62,12 +62,13 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        audioRecorder = AudioRecorderEngine { chunk, isSpeech ->
+        audioRecorder = AudioRecorderEngine { chunk, isSpeech, rms ->
             runOnUiThread {
                 audioEventSink?.success(
                     mapOf(
                         "data" to chunk,
-                        "isSpeech" to isSpeech
+                        "isSpeech" to isSpeech,
+                        "rms" to rms.toDouble()
                     )
                 )
             }

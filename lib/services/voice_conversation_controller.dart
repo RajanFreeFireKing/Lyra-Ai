@@ -15,6 +15,13 @@ import 'screen_agent_controller.dart';
 
 enum AssistantStatus { idle, listening, thinking, speaking, working }
 
+extension _ListTakeLast<T> on List<T> {
+  List<T> takeLast(int n) {
+    if (length <= n) return List<T>.from(this);
+    return sublist(length - n);
+  }
+}
+
 class VoiceConversationController extends ChangeNotifier {
   String geminiApiKey;
   String openRouterApiKey;

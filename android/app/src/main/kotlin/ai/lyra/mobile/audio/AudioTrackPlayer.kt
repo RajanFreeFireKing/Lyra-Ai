@@ -87,16 +87,34 @@ class AudioTrackPlayer(
     }
 
     /**
-     * Stonic interrupt behavior: instant audio cut on user speech.
+     * Stonic / Siya instant barge-in: clears queued audio and flushes track immediately.
      */
-    fun stopAndFlush() {
-        isPlaying.set(false)
+    fun flush() {
         audioQueue.clear()
-        playbackThread?.interrupt()
-        playbackThread = null
         try {
             audioTrack?.pause()
             audioTrack?.flush()
+            audioTrack?.play()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    /**
+     * Stonic interrupt behavior: instant audio cut on user speech.
+     */
+    fun stopAndFlush() {
+        audioQueue.clear()
+        try {
+            audioTrack?.pause()
+            audioTrack?.flush()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        isPlaying.set(false)
+        playbackThread?.interrupt()
+        playbackThread = null
+        try {
             audioTrack?.stop()
         } catch (e: Exception) {
             e.printStackTrace()

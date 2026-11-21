@@ -15,6 +15,7 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import ai.lyra.mobile.audio.AudioRecorderEngine
 import ai.lyra.mobile.audio.AudioTrackPlayer
+import ai.lyra.mobile.live.LyraLiveClient
 import ai.lyra.mobile.automation.CoordinateTransformer
 import ai.lyra.mobile.automation.LyraAccessibilityService
 import ai.lyra.mobile.automation.MediaProjectionService
@@ -30,6 +31,8 @@ class MainActivity : FlutterActivity() {
 
     private val AUDIO_CHANNEL = "ai.lyra.mobile/audio"
     private val AUDIO_STREAM_CHANNEL = "ai.lyra.mobile/audio_stream"
+    private val LIVE_CHANNEL = "ai.lyra.mobile/live"
+    private val LIVE_EVENT_CHANNEL = "ai.lyra.mobile/live_events"
     private val AUTOMATION_CHANNEL = "ai.lyra.mobile/automation"
     private val OVERLAY_CHANNEL = "ai.lyra.mobile/overlay"
     private val MEMORY_CHANNEL = "ai.lyra.mobile/memory"
@@ -41,11 +44,13 @@ class MainActivity : FlutterActivity() {
 
     private var audioRecorder: AudioRecorderEngine? = null
     private var audioPlayer: AudioTrackPlayer? = null
+    private var liveClient: LyraLiveClient? = null
     private var nativeTts: TextToSpeech? = null
     private var dbHelper: LyraDbHelper? = null
     private var awarenessService: AndroidAwarenessService? = null
 
     private var audioEventSink: EventChannel.EventSink? = null
+    private var liveEventSink: EventChannel.EventSink? = null
     private var projectionResultData: Intent? = null
     private var projectionResultCode: Int = 0
 
@@ -72,6 +77,8 @@ class MainActivity : FlutterActivity() {
                     )
                 )
             }
+            // Stream raw PCM chunk directly to Gemini Live WebSocket
+            liveClient?.sendAudio(chunk, chunk.size)
         }
 
         // 1. Audio Channel
@@ -142,6 +149,140 @@ class MainActivity : FlutterActivity() {
 
                 override fun onCancel(arguments: Any?) {
                     audioEventSink = null
+                }
+            }
+        )
+
+        // Live Audio Transport Channel (Gemini Live BidiGenerateContent)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, LIVE_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "startLiveSession" -> {
+                    val apiKey = call.argument<String>("apiKey") ?: ""
+                    val model = call.argument<String>("model") ?: "gemini-2.5-flash-native-audio-preview-12-2025"
+                    val voice = call.argument<String>("voice") ?: "Aoede"
+                    val systemPrompt = call.argument<String>("systemPrompt") ?: ""
+                    val temperature = call.argument<Double>("temperature") ?: 0.85
+
+                    val hasPerm = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                    if (!hasPerm) {
+                        result.success(false)
+                        return@setMethodCallHandler
+                    }
+
+                    try {
+                        liveClient?.close()
+                        audioPlayer?.flush()
+
+                        liveClient = LyraLiveClient(
+                            apiKey = apiKey,
+                            initialModel = model,
+                            voiceName = voice,
+                            systemPrompt = systemPrompt,
+                            temperature = temperature,
+                            callback = object : LyraLiveClient.Listener {
+                                override fun onReady() {
+                                    runOnUiThread {
+                                        liveEventSink?.success(mapOf("type" to "ready"))
+                                    }
+                                }
+
+                                override fun onAudio(pcm24k: ByteArray) {
+                                    audioPlayer?.feedChunk(pcm24k)
+                                    val rms = calculatePcmRms(pcm24k)
+                                    runOnUiThread {
+                                        liveEventSink?.success(mapOf("type" to "audio_output", "rms" to rms.toDouble()))
+                                    }
+                                }
+
+                                override fun onUserText(text: String) {
+                                    runOnUiThread {
+                                        liveEventSink?.success(mapOf("type" to "user_text", "text" to text))
+                                    }
+                                }
+
+                                override fun onLyraText(text: String) {
+                                    runOnUiThread {
+                                        liveEventSink?.success(mapOf("type" to "lyra_text", "text" to text))
+                                    }
+                                }
+
+                                override fun onInterrupted() {
+                                    audioPlayer?.flush()
+                                    nativeTts?.stop()
+                                    runOnUiThread {
+                                        liveEventSink?.success(mapOf("type" to "interrupted"))
+                                    }
+                                }
+
+                                override fun onTurnComplete() {
+                                    runOnUiThread {
+                                        liveEventSink?.success(mapOf("type" to "turn_complete"))
+                                    }
+                                }
+
+                                override fun onGoAway() {
+                                    runOnUiThread {
+                                        liveEventSink?.success(mapOf("type" to "go_away"))
+                                    }
+                                }
+
+                                override fun onClosed(reason: String) {
+                                    runOnUiThread {
+                                        liveEventSink?.success(mapOf("type" to "closed", "reason" to reason))
+                                    }
+                                }
+
+                                override fun onError(error: String) {
+                                    runOnUiThread {
+                                        liveEventSink?.success(mapOf("type" to "error", "error" to error))
+                                    }
+                                }
+                            }
+                        )
+                        liveClient?.connect()
+                        audioRecorder?.startRecording()
+                        result.success(true)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        result.error("LIVE_START_FAILED", e.message, null)
+                    }
+                }
+                "stopLiveSession" -> {
+                    try {
+                        liveClient?.close()
+                        liveClient = null
+                        audioRecorder?.stopRecording()
+                        audioPlayer?.flush()
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("LIVE_STOP_FAILED", e.message, null)
+                    }
+                }
+                "sendLiveText" -> {
+                    val text = call.argument<String>("text") ?: ""
+                    liveClient?.sendText(text)
+                    result.success(true)
+                }
+                "sendLiveAudioEnd" -> {
+                    liveClient?.sendAudioStreamEnd()
+                    result.success(true)
+                }
+                "isLiveReady" -> {
+                    result.success(liveClient?.isReady ?: false)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // Live Events Stream Channel
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, LIVE_EVENT_CHANNEL).setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    liveEventSink = events
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    liveEventSink = null
                 }
             }
         )
@@ -303,8 +444,24 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private fun calculatePcmRms(pcm: ByteArray): Float {
+        var sum = 0.0
+        val count = pcm.size / 2
+        if (count == 0) return 0f
+        var i = 0
+        while (i < pcm.size - 1) {
+            val sample = (pcm[i].toInt() and 0xFF) or (pcm[i + 1].toInt() shl 8)
+            val s = sample.toShort()
+            sum += (s * s).toDouble()
+            i += 2
+        }
+        return kotlin.math.sqrt(sum / count).toFloat()
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        liveClient?.close()
+        liveClient = null
         audioPlayer?.release()
         audioRecorder?.stopRecording()
         nativeTts?.stop()

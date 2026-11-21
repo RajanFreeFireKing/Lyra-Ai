@@ -46,6 +46,7 @@ class VoiceConversationController extends ChangeNotifier {
   MemoryRepository? _memoryRepo;
   StreamSubscription? _audioSubscription;
   StreamSubscription? _transcriptSubscription;
+  StreamSubscription? _liveEventSubscription;
 
   VoiceConversationController({
     required this.geminiApiKey,
@@ -115,6 +116,7 @@ class VoiceConversationController extends ChangeNotifier {
     status = AssistantStatus.listening;
     currentStatusText = "Listening...";
     lastUserTranscript = "";
+    lastAssistantReply = "";
     currentAudioRms = 0.0;
     _recordedPcmBytes.clear();
     _wasSpeechDetected = false;
@@ -122,6 +124,112 @@ class VoiceConversationController extends ChangeNotifier {
     notifyListeners();
     NativeChannel.updateOverlay("Listening", "");
 
+    // 3. Prefer Rock-Solid Kotlin Live WebSocket Audio Transport (BidiGenerateContent)
+    if (geminiApiKey.trim().isNotEmpty) {
+      try {
+        final stateCard = await _memoryRepo?.loadStateCard() ?? "";
+        final awareness = await NativeChannel.getAwarenessSnapshot();
+        final template = await SystemPrompts.loadPromptTemplate();
+
+        final systemPrompt = template
+            .replaceAll("{{NAME}}", character.name)
+            .replaceAll("{{CHARACTER}}", character.prompt)
+            .replaceAll("{{SCRIPT_RULE}}", "- Speak in natural Hindustani (Roman Urdu/Hindi) or English.")
+            .replaceAll("{{GENDER_RULE}}", "")
+            .replaceAll("{{NATURAL_VOICE}}", " — ${character.naturalVoice} —")
+            .replaceAll("{{PERFORM_EXAMPLES}}", character.bracketExamples.join("\n")) +
+            "\n## Context & Memory\n$stateCard\nCurrent Foreground App: ${awareness['foregroundApp'] ?? 'Homescreen'}";
+
+        final liveStarted = await NativeChannel.startLiveSession(
+          apiKey: geminiApiKey,
+          model: ApiConfig.liveNativeAudioModel,
+          voice: character.voice,
+          systemPrompt: systemPrompt,
+        );
+
+        if (liveStarted) {
+          _liveEventSubscription?.cancel();
+          _liveEventSubscription = NativeChannel.liveEventStream.listen((event) {
+            final type = event['type'] as String? ?? '';
+            switch (type) {
+              case 'ready':
+                status = AssistantStatus.listening;
+                currentStatusText = "Listening (Live)...";
+                notifyListeners();
+                NativeChannel.updateOverlay("Listening", "");
+                break;
+
+              case 'audio_output':
+                final rms = (event['rms'] as num?)?.toDouble() ?? 0.0;
+                currentAudioRms = rms;
+                if (status != AssistantStatus.speaking) {
+                  status = AssistantStatus.speaking;
+                  currentStatusText = "Speaking...";
+                  NativeChannel.updateOverlay("Speaking", "");
+                }
+                notifyListeners();
+                break;
+
+              case 'user_text':
+                final text = event['text'] as String? ?? '';
+                if (text.isNotEmpty) {
+                  lastUserTranscript = text;
+                  notifyListeners();
+                }
+                break;
+
+              case 'lyra_text':
+                final text = event['text'] as String? ?? '';
+                if (text.isNotEmpty) {
+                  lastAssistantReply += text;
+                  notifyListeners();
+                }
+                break;
+
+              case 'interrupted':
+                // Native Barge-in
+                status = AssistantStatus.listening;
+                currentStatusText = "Listening...";
+                currentAudioRms = 0.0;
+                notifyListeners();
+                NativeChannel.updateOverlay("Listening", "");
+                break;
+
+              case 'turn_complete':
+                _onLiveTurnComplete();
+                break;
+
+              case 'error':
+                final err = event['error'] as String? ?? '';
+                currentStatusText = err.isNotEmpty ? "Live Error: $err" : "Live Session Error";
+                notifyListeners();
+                break;
+
+              case 'closed':
+                if (status == AssistantStatus.listening || status == AssistantStatus.speaking) {
+                  status = AssistantStatus.idle;
+                  currentStatusText = "Tap to speak with Lyra";
+                  notifyListeners();
+                }
+                break;
+            }
+          });
+
+          // Listen to mic audio stream for RMS visualizer
+          _audioSubscription?.cancel();
+          _audioSubscription = NativeChannel.audioStream.listen((event) {
+            final rms = (event['rms'] as num?)?.toDouble() ?? 0.0;
+            if (status == AssistantStatus.listening) {
+              currentAudioRms = rms;
+              notifyListeners();
+            }
+          });
+          return;
+        }
+      } catch (_) {}
+    }
+
+    // Fallback: Gemini STT WebSocket / REST pipeline
     _sttClient = GeminiLiveStt(apiKey: geminiApiKey);
     await _sttClient?.connect();
 
@@ -181,10 +289,15 @@ class VoiceConversationController extends ChangeNotifier {
 
   /// Trigger turn completion when user stops speaking or taps mic STOP button
   Future<void> finishTurnManually() async {
-    if (status != AssistantStatus.listening) return;
+    if (status != AssistantStatus.listening && status != AssistantStatus.speaking) return;
 
     _silenceTimer?.cancel();
     _silenceTimer = null;
+
+    if (await NativeChannel.isLiveReady()) {
+      await NativeChannel.sendLiveAudioEnd();
+      return;
+    }
 
     status = AssistantStatus.thinking;
     currentStatusText = "Transcribing speech...";
@@ -236,6 +349,10 @@ class VoiceConversationController extends ChangeNotifier {
   Future<void> cancelListening() async {
     _silenceTimer?.cancel();
     _silenceTimer = null;
+    await NativeChannel.stopLiveSession();
+    await _liveEventSubscription?.cancel();
+    _liveEventSubscription = null;
+
     status = AssistantStatus.idle;
     currentStatusText = "Tap to speak with Lyra";
     currentAudioRms = 0.0;
@@ -247,6 +364,41 @@ class VoiceConversationController extends ChangeNotifier {
     await _transcriptSubscription?.cancel();
     _sttClient?.disconnect();
     _recordedPcmBytes.clear();
+  }
+
+  Future<void> _onLiveTurnComplete() async {
+    final userText = lastUserTranscript.trim();
+    final replyText = lastAssistantReply.trim();
+
+    if (userText.isNotEmpty) {
+      chatHistory.add({"role": "user", "text": userText});
+      await _memoryRepo?.recordTurn("user", userText);
+    }
+
+    if (replyText.isNotEmpty) {
+      chatHistory.add({"role": "assistant", "text": replyText});
+      await _memoryRepo?.recordTurn("assistant", replyText);
+      _memoryRepo?.digestConversation(chatHistory);
+    }
+
+    if (userText.isNotEmpty && _isScreenAutomationRequest(userText.toLowerCase())) {
+      status = AssistantStatus.working;
+      currentStatusText = "Working on your screen...";
+      notifyListeners();
+      NativeChannel.updateOverlay("Working", "Executing task");
+
+      final outcome = await screenAgent.executeScreenTask(userText);
+      chatHistory.add({"role": "assistant", "text": outcome});
+      await _memoryRepo?.recordTurn("assistant", outcome);
+      await NativeChannel.speakTextNative(outcome);
+    }
+
+    status = AssistantStatus.idle;
+    currentStatusText = "Tap to speak with Lyra";
+    currentAudioRms = 0.0;
+    lastAssistantReply = "";
+    notifyListeners();
+    NativeChannel.updateOverlay("Ready", "");
   }
 
   Future<void> _onUserSpeechFinished(String userText) async {
@@ -420,5 +572,15 @@ class VoiceConversationController extends ChangeNotifier {
     }
 
     return "Ji, main sun rahi hoon. Kuch aur bataiye?";
+  }
+
+  @override
+  void dispose() {
+    _silenceTimer?.cancel();
+    _liveEventSubscription?.cancel();
+    _audioSubscription?.cancel();
+    _transcriptSubscription?.cancel();
+    NativeChannel.stopLiveSession();
+    super.dispose();
   }
 }

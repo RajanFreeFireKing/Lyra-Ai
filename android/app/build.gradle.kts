@@ -44,4 +44,5 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("androidx.annotation:annotation:1.9.1")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }

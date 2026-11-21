@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 class NativeChannel {
   static const MethodChannel _audioChannel = MethodChannel('ai.lyra.mobile/audio');
   static const EventChannel _audioStreamChannel = EventChannel('ai.lyra.mobile/audio_stream');
+  static const MethodChannel _liveChannel = MethodChannel('ai.lyra.mobile/live');
+  static const EventChannel _liveEventChannel = EventChannel('ai.lyra.mobile/live_events');
   static const MethodChannel _automationChannel = MethodChannel('ai.lyra.mobile/automation');
   static const MethodChannel _overlayChannel = MethodChannel('ai.lyra.mobile/overlay');
   static const MethodChannel _memoryChannel = MethodChannel('ai.lyra.mobile/memory');
@@ -76,6 +78,59 @@ class NativeChannel {
 
   static Stream<Map<dynamic, dynamic>> get audioStream {
     return _audioStreamChannel.receiveBroadcastStream().map((event) => event as Map<dynamic, dynamic>);
+  }
+
+  // Live Audio Transport Methods (Gemini Live BidiGenerateContent)
+  static Future<bool> startLiveSession({
+    required String apiKey,
+    String model = "gemini-2.5-flash-native-audio-preview-12-2025",
+    String voice = "Aoede",
+    required String systemPrompt,
+    double temperature = 0.85,
+  }) async {
+    try {
+      final res = await _liveChannel.invokeMethod<bool>('startLiveSession', {
+        'apiKey': apiKey,
+        'model': model,
+        'voice': voice,
+        'systemPrompt': systemPrompt,
+        'temperature': temperature,
+      });
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<void> stopLiveSession() async {
+    try {
+      await _liveChannel.invokeMethod('stopLiveSession');
+    } catch (_) {}
+  }
+
+  static Future<void> sendLiveText(String text) async {
+    try {
+      await _liveChannel.invokeMethod('sendLiveText', {'text': text});
+    } catch (_) {}
+  }
+
+  static Future<void> sendLiveAudioEnd() async {
+    try {
+      await _liveChannel.invokeMethod('sendLiveAudioEnd');
+    } catch (_) {}
+  }
+
+  static Future<bool> isLiveReady() async {
+    try {
+      final res = await _liveChannel.invokeMethod<bool>('isLiveReady');
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Stream<Map<dynamic, dynamic>> get liveEventStream {
+    return _liveEventChannel.receiveBroadcastStream().map((event) => event as Map<dynamic, dynamic>);
   }
 
   // Automation Methods

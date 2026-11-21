@@ -1,4 +1,8 @@
 class ApiConfig {
+  // Live Bidirectional Audio Models (Gemini Live BidiGenerateContent)
+  static const String liveNativeAudioModel = "gemini-2.5-flash-native-audio-preview-12-2025";
+  static const String liveFallbackModel = "gemini-3.8-live";
+
   // STT Models (Google AI Studio public endpoint)
   static const String sttModel = "gemini-3.8-flash";
   static const String sttLiveModel = "gemini-3.8-flash";

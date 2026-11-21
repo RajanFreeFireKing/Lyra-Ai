@@ -1,0 +1,255 @@
+package ai.lyra.mobile
+
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
+import android.media.projection.MediaProjectionManager
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import ai.lyra.mobile.audio.AudioRecorderEngine
+import ai.lyra.mobile.audio.AudioTrackPlayer
+import ai.lyra.mobile.automation.CoordinateTransformer
+import ai.lyra.mobile.automation.LyraAccessibilityService
+import ai.lyra.mobile.automation.MediaProjectionService
+import ai.lyra.mobile.awareness.AndroidAwarenessService
+import ai.lyra.mobile.memory.LyraDbHelper
+import ai.lyra.mobile.overlay.FloatingHudService
+import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
+import io.flutter.plugin.common.MethodChannel
+
+class MainActivity : FlutterActivity() {
+
+    private val AUDIO_CHANNEL = "ai.lyra.mobile/audio"
+    private val AUDIO_STREAM_CHANNEL = "ai.lyra.mobile/audio_stream"
+    private val AUTOMATION_CHANNEL = "ai.lyra.mobile/automation"
+    private val OVERLAY_CHANNEL = "ai.lyra.mobile/overlay"
+    private val MEMORY_CHANNEL = "ai.lyra.mobile/memory"
+    private val AWARENESS_CHANNEL = "ai.lyra.mobile/awareness"
+
+    private val REQUEST_MEDIA_PROJECTION = 1001
+
+    private var audioRecorder: AudioRecorderEngine? = null
+    private var audioPlayer: AudioTrackPlayer? = null
+    private var dbHelper: LyraDbHelper? = null
+    private var awarenessService: AndroidAwarenessService? = null
+
+    private var audioEventSink: EventChannel.EventSink? = null
+    private var projectionResultData: Intent? = null
+    private var projectionResultCode: Int = 0
+
+    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        super.configureFlutterEngine(flutterEngine)
+
+        dbHelper = LyraDbHelper(this)
+        awarenessService = AndroidAwarenessService(this)
+        audioPlayer = AudioTrackPlayer(24000)
+
+        audioRecorder = AudioRecorderEngine { chunk, isSpeech ->
+            runOnUiThread {
+                audioEventSink?.success(
+                    mapOf(
+                        "data" to chunk,
+                        "isSpeech" to isSpeech
+                    )
+                )
+            }
+        }
+
+        // 1. Audio Channel
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, AUDIO_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "startRecording" -> {
+                    val ok = audioRecorder?.startRecording() ?: false
+                    result.success(ok)
+                }
+                "stopRecording" -> {
+                    audioRecorder?.stopRecording()
+                    result.success(true)
+                }
+                "feedAudioChunk" -> {
+                    val pcmBytes = call.argument<ByteArray>("data")
+                    if (pcmBytes != null) {
+                        audioPlayer?.feedChunk(pcmBytes)
+                        result.success(true)
+                    } else {
+                        result.error("INVALID_ARGS", "Missing audio data", null)
+                    }
+                }
+                "stopPlayback" -> {
+                    audioPlayer?.stopAndFlush()
+                    result.success(true)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // Audio Stream EventChannel
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, AUDIO_STREAM_CHANNEL).setStreamHandler(
+            object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    audioEventSink = events
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    audioEventSink = null
+                }
+            }
+        )
+
+        // 2. Automation Channel (Agent S3 actions)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, AUTOMATION_CHANNEL).setMethodCallHandler { call, result ->
+            val service = LyraAccessibilityService.instance
+            when (call.method) {
+                "requestScreenCapturePermission" -> {
+                    val manager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+                    startActivityForResult(manager.createScreenCaptureIntent(), REQUEST_MEDIA_PROJECTION)
+                    result.success(true)
+                }
+                "isAccessibilityServiceActive" -> {
+                    result.success(LyraAccessibilityService.isRunning())
+                }
+                "openAccessibilitySettings" -> {
+                    val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    startActivity(intent)
+                    result.success(true)
+                }
+                "captureScreen" -> {
+                    val displayMetrics = resources.displayMetrics
+                    val pngBytes = MediaProjectionService.captureScreenPng(displayMetrics.widthPixels, displayMetrics.heightPixels)
+                    if (pngBytes != null) {
+                        result.success(
+                            mapOf(
+                                "png" to pngBytes,
+                                "width" to displayMetrics.widthPixels,
+                                "height" to displayMetrics.heightPixels
+                            )
+                        )
+                    } else {
+                        result.error("CAPTURE_FAILED", "MediaProjection capture returned null", null)
+                    }
+                }
+                "click" -> {
+                    val x = call.argument<Int>("x") ?: 0
+                    val y = call.argument<Int>("y") ?: 0
+                    val ok = service?.click(x, y) ?: false
+                    result.success(ok)
+                }
+                "scroll" -> {
+                    val direction = call.argument<String>("direction") ?: "down"
+                    val x = call.argument<Int>("x") ?: (resources.displayMetrics.widthPixels / 2)
+                    val y = call.argument<Int>("y") ?: (resources.displayMetrics.heightPixels / 2)
+                    val ok = service?.scroll(direction, x, y) ?: false
+                    result.success(ok)
+                }
+                "typeText" -> {
+                    val text = call.argument<String>("text") ?: ""
+                    val ok = service?.typeText(text) ?: false
+                    result.success(ok)
+                }
+                "pressBack" -> result.success(service?.pressBack() ?: false)
+                "pressHome" -> result.success(service?.pressHome() ?: false)
+                else -> result.notImplemented()
+            }
+        }
+
+        // 3. Overlay Channel
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, OVERLAY_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "checkOverlayPermission" -> {
+                    val ok = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) Settings.canDrawOverlays(this) else true
+                    result.success(ok)
+                }
+                "requestOverlayPermission" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+                        val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+                        startActivity(intent)
+                    }
+                    result.success(true)
+                }
+                "showOverlay" -> {
+                    startService(Intent(this, FloatingHudService::class.java))
+                    result.success(true)
+                }
+                "updateOverlay" -> {
+                    val status = call.argument<String>("status") ?: "Working"
+                    val detail = call.argument<String>("detail") ?: ""
+                    FloatingHudService.updateStatus(status, detail)
+                    result.success(true)
+                }
+                "hideOverlay" -> {
+                    FloatingHudService.hide()
+                    result.success(true)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // 4. Memory Channel
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, MEMORY_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "compileStateCard" -> {
+                    val card = dbHelper?.compileStateCard() ?: ""
+                    result.success(card)
+                }
+                "insertTurn" -> {
+                    val role = call.argument<String>("role") ?: "user"
+                    val text = call.argument<String>("text") ?: ""
+                    val id = dbHelper?.insertTurn(role, text) ?: ""
+                    result.success(id)
+                }
+                "insertMemory" -> {
+                    val type = call.argument<String>("type") ?: "identity"
+                    val original = call.argument<String>("textOriginal") ?: ""
+                    val en = call.argument<String>("textEn") ?: ""
+                    val quote = call.argument<String>("quote") ?: ""
+                    val origin = call.argument<String>("origin") ?: "stated"
+                    val pinned = call.argument<Boolean>("pinned") ?: false
+                    val id = dbHelper?.insertMemory(type, original, en, quote, origin, pinned) ?: ""
+                    result.success(id)
+                }
+                "verifyQuote" -> {
+                    val quote = call.argument<String>("quote") ?: ""
+                    val verified = dbHelper?.verifyQuote(quote) ?: false
+                    result.success(verified)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // 5. Awareness Channel
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, AWARENESS_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getSnapshot" -> {
+                    val snapshot = awarenessService?.getAwarenessSnapshot() ?: emptyMap<String, Any>()
+                    result.success(snapshot)
+                }
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQUEST_MEDIA_PROJECTION && resultCode == Activity.RESULT_OK && data != null) {
+            projectionResultCode = resultCode
+            projectionResultData = data
+            val manager = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+            MediaProjectionService.currentProjection = manager.getMediaProjection(resultCode, data)
+            val serviceIntent = Intent(this, MediaProjectionService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
+            } else {
+                startService(serviceIntent)
+            }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        audioPlayer?.release()
+        audioRecorder?.stopRecording()
+    }
+}

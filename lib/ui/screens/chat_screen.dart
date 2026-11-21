@@ -42,7 +42,7 @@ class ChatScreen extends StatelessWidget {
                     borderColor: isUser ? neon.withOpacity(0.4) : Colors.white12,
                     child: Column(
                       crossAxisAlignment:
-                          isUser ? CrossAlignment.end : CrossAlignment.start,
+                          isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                       children: [
                         Text(
                           isUser ? "YOU" : "LYRA",

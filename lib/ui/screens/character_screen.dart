@@ -59,7 +59,7 @@ class CharacterScreen extends StatelessWidget {
         borderRadius: 20,
         padding: const EdgeInsets.all(18),
         child: Column(
-          crossAxisAlignment: CrossAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
@@ -76,7 +76,7 @@ class CharacterScreen extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
-                    crossAxisAlignment: CrossAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         character.name,

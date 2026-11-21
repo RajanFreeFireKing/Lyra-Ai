@@ -49,7 +49,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
             borderColor: neon.withOpacity(0.3),
             padding: const EdgeInsets.all(18),
             child: Column(
-              crossAxisAlignment: CrossAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   children: [
@@ -78,7 +78,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
           GlassContainer(
             padding: const EdgeInsets.all(16),
             child: Column(
-              crossAxisAlignment: CrossAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
                   "Verification Gate (digest.js)",

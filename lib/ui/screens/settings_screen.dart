@@ -56,7 +56,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             borderColor: neon.withOpacity(0.3),
             padding: const EdgeInsets.all(16),
             child: Column(
-              crossAxisAlignment: CrossAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
                   "NEON COLOR PALETTE",
@@ -109,7 +109,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           GlassContainer(
             padding: const EdgeInsets.all(16),
             child: Column(
-              crossAxisAlignment: CrossAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
                   "CLOUD AI KEYS (BYOK)",
@@ -154,7 +154,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           GlassContainer(
             padding: const EdgeInsets.all(16),
             child: Column(
-              crossAxisAlignment: CrossAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
                   "ANDROID OS PERMISSIONS",

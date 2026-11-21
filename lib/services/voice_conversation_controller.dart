@@ -14,8 +14,8 @@ import 'screen_agent_controller.dart';
 enum AssistantStatus { idle, listening, thinking, speaking, working }
 
 class VoiceConversationController extends ChangeNotifier {
-  final String geminiApiKey;
-  final String openRouterApiKey;
+  String geminiApiKey;
+  String openRouterApiKey;
   final ScreenAgentController screenAgent;
 
   CharacterModel character = CharacterModel.soulmate();
@@ -40,6 +40,15 @@ class VoiceConversationController extends ChangeNotifier {
     _ttsClient = GeminiTtsClient(apiKey: geminiApiKey, voice: character.voice);
   }
 
+  void updateApiKeys({required String geminiKey, required String openRouterKey}) {
+    geminiApiKey = geminiKey;
+    openRouterApiKey = openRouterKey;
+    _memoryRepo = MemoryRepository(apiKey: openRouterApiKey);
+    _ttsClient = GeminiTtsClient(apiKey: geminiApiKey, voice: character.voice);
+    screenAgent.updateApiKey(openRouterKey);
+    notifyListeners();
+  }
+
   void switchCharacter(CharacterModel newChar) {
     character = newChar;
     _ttsClient = GeminiTtsClient(apiKey: geminiApiKey, voice: character.voice);
@@ -50,6 +59,28 @@ class VoiceConversationController extends ChangeNotifier {
     if (status == AssistantStatus.listening) {
       await stopListening();
       return;
+    }
+
+    // 1. Check API Key
+    if (geminiApiKey.trim().isEmpty) {
+      status = AssistantStatus.idle;
+      currentStatusText = "Set Google AI Key in Settings";
+      notifyListeners();
+      return;
+    }
+
+    // 2. Check & Request Microphone Permission
+    bool hasMic = await NativeChannel.checkMicrophonePermission();
+    if (!hasMic) {
+      currentStatusText = "Requesting microphone permission...";
+      notifyListeners();
+      hasMic = await NativeChannel.requestMicrophonePermission();
+      if (!hasMic) {
+        status = AssistantStatus.idle;
+        currentStatusText = "Microphone permission required";
+        notifyListeners();
+        return;
+      }
     }
 
     // Stop ongoing speech on user interrupt
@@ -70,7 +101,7 @@ class VoiceConversationController extends ChangeNotifier {
     final ok = await NativeChannel.startRecording();
     if (!ok) {
       status = AssistantStatus.idle;
-      currentStatusText = "Microphone error";
+      currentStatusText = "Microphone failed to start";
       notifyListeners();
       return;
     }

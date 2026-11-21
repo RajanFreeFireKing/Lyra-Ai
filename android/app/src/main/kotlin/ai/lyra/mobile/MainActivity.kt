@@ -1,12 +1,16 @@
 package ai.lyra.mobile
 
+import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import ai.lyra.mobile.audio.AudioRecorderEngine
 import ai.lyra.mobile.audio.AudioTrackPlayer
 import ai.lyra.mobile.automation.CoordinateTransformer
@@ -30,6 +34,8 @@ class MainActivity : FlutterActivity() {
     private val AWARENESS_CHANNEL = "ai.lyra.mobile/awareness"
 
     private val REQUEST_MEDIA_PROJECTION = 1001
+    private val REQUEST_RECORD_AUDIO = 1002
+    private var pendingAudioPermissionResult: MethodChannel.Result? = null
 
     private var audioRecorder: AudioRecorderEngine? = null
     private var audioPlayer: AudioTrackPlayer? = null
@@ -61,7 +67,24 @@ class MainActivity : FlutterActivity() {
         // 1. Audio Channel
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, AUDIO_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
+                "checkMicrophonePermission" -> {
+                    val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                    result.success(granted)
+                }
+                "requestMicrophonePermission" -> {
+                    if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                        result.success(true)
+                    } else {
+                        pendingAudioPermissionResult = result
+                        ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_RECORD_AUDIO)
+                    }
+                }
                 "startRecording" -> {
+                    val hasPerm = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                    if (!hasPerm) {
+                        result.success(false)
+                        return@setMethodCallHandler
+                    }
                     val ok = audioRecorder?.startRecording() ?: false
                     result.success(ok)
                 }
@@ -228,6 +251,15 @@ class MainActivity : FlutterActivity() {
                 }
                 else -> result.notImplemented()
             }
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_RECORD_AUDIO) {
+            val granted = grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+            pendingAudioPermissionResult?.success(granted)
+            pendingAudioPermissionResult = null
         }
     }
 

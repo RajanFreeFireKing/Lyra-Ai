@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/theme/theme_notifier.dart';
 import '../../services/native_channel.dart';
+import '../../services/voice_conversation_controller.dart';
 import '../widgets/glass_container.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -32,11 +33,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   void _saveKeys() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('lyra_gemini_api_key', _geminiKeyController.text.trim());
-    await prefs.setString('lyra_openrouter_api_key', _openRouterKeyController.text.trim());
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("API Keys saved successfully")),
-    );
+    final gemini = _geminiKeyController.text.trim();
+    final openRouter = _openRouterKeyController.text.trim();
+    await prefs.setString('lyra_gemini_api_key', gemini);
+    await prefs.setString('lyra_openrouter_api_key', openRouter);
+
+    if (mounted) {
+      Provider.of<VoiceConversationController>(context, listen: false)
+          .updateApiKeys(geminiKey: gemini, openRouterKey: openRouter);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("API Keys saved successfully")),
+      );
+    }
   }
 
   @override
@@ -161,6 +169,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 1.2),
                 ),
                 const SizedBox(height: 10),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.mic_rounded, color: neon),
+                  title: const Text("Microphone Access", style: TextStyle(fontSize: 14)),
+                  subtitle: const Text("Required for voice conversation & VAD", style: TextStyle(fontSize: 11)),
+                  trailing: TextButton(
+                    onPressed: () async {
+                      final granted = await NativeChannel.requestMicrophonePermission();
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(granted ? "Microphone permission granted" : "Microphone permission denied")),
+                        );
+                      }
+                    },
+                    child: const Text("Grant"),
+                  ),
+                ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(Icons.accessibility_new_rounded, color: neon),

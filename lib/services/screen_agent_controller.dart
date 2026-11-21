@@ -6,7 +6,7 @@ import '../data/models/agent_action.dart';
 import 'native_channel.dart';
 
 class ScreenAgentController extends ChangeNotifier {
-  final String openRouterApiKey;
+  String openRouterApiKey;
   bool isExecuting = false;
   int currentStep = 0;
   String currentActionThought = "";
@@ -16,6 +16,12 @@ class ScreenAgentController extends ChangeNotifier {
     required this.openRouterApiKey,
   }) {
     _plannerClient = AgentPlannerClient(apiKey: openRouterApiKey);
+  }
+
+  void updateApiKey(String newKey) {
+    openRouterApiKey = newKey;
+    _plannerClient = AgentPlannerClient(apiKey: openRouterApiKey);
+    notifyListeners();
   }
 
   /// Exact replica of Stonic runner.py _loop

@@ -10,6 +10,24 @@ class NativeChannel {
   static const MethodChannel _awarenessChannel = MethodChannel('ai.lyra.mobile/awareness');
 
   // Audio Methods
+  static Future<bool> checkMicrophonePermission() async {
+    try {
+      final res = await _audioChannel.invokeMethod<bool>('checkMicrophonePermission');
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<bool> requestMicrophonePermission() async {
+    try {
+      final res = await _audioChannel.invokeMethod<bool>('requestMicrophonePermission');
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<bool> startRecording() async {
     try {
       final res = await _audioChannel.invokeMethod<bool>('startRecording');

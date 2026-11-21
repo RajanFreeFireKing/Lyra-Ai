@@ -9,6 +9,8 @@ import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.speech.tts.TextToSpeech
+import java.util.Locale
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import ai.lyra.mobile.audio.AudioRecorderEngine
@@ -39,6 +41,7 @@ class MainActivity : FlutterActivity() {
 
     private var audioRecorder: AudioRecorderEngine? = null
     private var audioPlayer: AudioTrackPlayer? = null
+    private var nativeTts: TextToSpeech? = null
     private var dbHelper: LyraDbHelper? = null
     private var awarenessService: AndroidAwarenessService? = null
 
@@ -52,6 +55,12 @@ class MainActivity : FlutterActivity() {
         dbHelper = LyraDbHelper(this)
         awarenessService = AndroidAwarenessService(this)
         audioPlayer = AudioTrackPlayer(24000)
+
+        nativeTts = TextToSpeech(this) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                nativeTts?.language = Locale.getDefault()
+            }
+        }
 
         audioRecorder = AudioRecorderEngine { chunk, isSpeech ->
             runOnUiThread {
@@ -103,6 +112,20 @@ class MainActivity : FlutterActivity() {
                 }
                 "stopPlayback" -> {
                     audioPlayer?.stopAndFlush()
+                    nativeTts?.stop()
+                    result.success(true)
+                }
+                "speakTextNative" -> {
+                    val text = call.argument<String>("text") ?: ""
+                    val lang = call.argument<String>("lang") ?: ""
+                    if (lang.isNotEmpty()) {
+                        nativeTts?.language = Locale.forLanguageTag(lang)
+                    }
+                    val res = nativeTts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "lyra_${System.currentTimeMillis()}")
+                    result.success(res == TextToSpeech.SUCCESS)
+                }
+                "stopNativePlayback" -> {
+                    nativeTts?.stop()
                     result.success(true)
                 }
                 else -> result.notImplemented()
@@ -283,5 +306,7 @@ class MainActivity : FlutterActivity() {
         super.onDestroy()
         audioPlayer?.release()
         audioRecorder?.stopRecording()
+        nativeTts?.stop()
+        nativeTts?.shutdown()
     }
 }

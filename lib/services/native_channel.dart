@@ -52,6 +52,25 @@ class NativeChannel {
   static Future<void> stopPlayback() async {
     try {
       await _audioChannel.invokeMethod('stopPlayback');
+      await _audioChannel.invokeMethod('stopNativePlayback');
+    } catch (_) {}
+  }
+
+  static Future<bool> speakTextNative(String text, {String lang = "en-US"}) async {
+    try {
+      final res = await _audioChannel.invokeMethod<bool>('speakTextNative', {
+        'text': text,
+        'lang': lang,
+      });
+      return res ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<void> stopNativePlayback() async {
+    try {
+      await _audioChannel.invokeMethod('stopNativePlayback');
     } catch (_) {}
   }
 

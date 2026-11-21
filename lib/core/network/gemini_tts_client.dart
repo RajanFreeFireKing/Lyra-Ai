@@ -33,7 +33,6 @@ class GeminiTtsClient {
       } else if (lower.contains("gasp")) {
         cleanText = cleanText.replaceFirst(m.group(0)!, "<gasp>");
       } else {
-        // Mood / Delivery direction
         currentStyle = raw;
         cleanText = cleanText.replaceFirst(m.group(0)!, "");
       }
@@ -44,7 +43,7 @@ class GeminiTtsClient {
     };
   }
 
-  /// Synthesizes speech and streams 24kHz PCM chunks to native AudioTrack
+  /// Synthesizes speech and streams 24kHz PCM chunks to native AudioTrack, with automatic Android native TTS fallback
   Future<void> speakLine(String rawLine) async {
     if (rawLine.trim().isEmpty) return;
 
@@ -53,8 +52,17 @@ class GeminiTtsClient {
     final style = parsed["style"] ?? "";
     if (text.isEmpty) return;
 
+    // Plain text for native TTS fallback (remove SSML tags like <sigh>, <laugh>)
+    final plainText = text.replaceAll(RegExp(r'<[^>]*>'), '').trim();
+
+    if (apiKey.trim().isEmpty) {
+      // Fallback directly to native TTS
+      await NativeChannel.speakTextNative(plainText);
+      return;
+    }
+
     final url = Uri.parse(
-        '${ApiConfig.googleGenAiBaseUrl}/models/$model:generateContentStream?key=$apiKey');
+        '${ApiConfig.googleGenAiBaseUrl}/models/$model:generateContent?key=$apiKey');
 
     final payloadPart = <String, dynamic>{"text": text};
     if (style.isNotEmpty) {
@@ -69,50 +77,53 @@ class GeminiTtsClient {
         }
       ],
       "generationConfig": {
-        "response_modalities": ["AUDIO"],
-        "speech_config": {
-          "voice_config": {
-            "voice": voice
+        "responseModalities": ["AUDIO"],
+        "speechConfig": {
+          "voiceConfig": {
+            "prebuiltVoiceConfig": {
+              "voiceName": voice
+            }
           }
         }
       }
     });
 
+    bool playedCloudAudio = false;
+
     try {
-      final request = http.Request('POST', url)
-        ..headers['Content-Type'] = 'application/json'
-        ..body = body;
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: body,
+      );
 
-      final response = await request.send();
-      if (response.statusCode != 200) {
-        return;
-      }
-
-      await for (final chunk in response.stream.transform(utf8.decoder)) {
-        _processChunkJson(chunk);
-      }
-    } catch (_) {}
-  }
-
-  void _processChunkJson(String jsonChunk) {
-    try {
-      final cleaned = jsonChunk.trim().replaceAll(RegExp(r'^,|\[|\]$'), '');
-      if (cleaned.isEmpty) return;
-      final data = jsonDecode(cleaned);
-      final candidates = data['candidates'] as List<dynamic>?;
-      if (candidates != null && candidates.isNotEmpty) {
-        final parts = candidates[0]['content']?['parts'] as List<dynamic>?;
-        if (parts != null) {
-          for (final part in parts) {
-            final inlineData = part['inlineData'] ?? part['inline_data'];
-            if (inlineData != null && inlineData['data'] != null) {
-              final base64Audio = inlineData['data'] as String;
-              final pcmBytes = base64Decode(base64Audio);
-              NativeChannel.feedAudioChunk(pcmBytes);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final candidates = data['candidates'] as List<dynamic>?;
+        if (candidates != null && candidates.isNotEmpty) {
+          final parts = candidates[0]['content']?['parts'] as List<dynamic>?;
+          if (parts != null) {
+            for (final part in parts) {
+              final inlineData = part['inlineData'] ?? part['inline_data'];
+              if (inlineData != null && inlineData['data'] != null) {
+                final base64Audio = inlineData['data'] as String;
+                final pcmBytes = base64Decode(base64Audio);
+                if (pcmBytes.isNotEmpty) {
+                  await NativeChannel.feedAudioChunk(pcmBytes);
+                  playedCloudAudio = true;
+                }
+              }
             }
           }
         }
       }
-    } catch (_) {}
+    } catch (_) {
+      playedCloudAudio = false;
+    }
+
+    // If cloud TTS failed to produce audio, speak aloud via native Android TTS engine!
+    if (!playedCloudAudio && plainText.isNotEmpty) {
+      await NativeChannel.speakTextNative(plainText);
+    }
   }
 }

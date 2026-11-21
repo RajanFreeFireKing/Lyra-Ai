@@ -4,8 +4,9 @@ import '../../core/theme/theme_notifier.dart';
 import '../../services/voice_conversation_controller.dart';
 import '../../services/screen_agent_controller.dart';
 import '../../services/native_channel.dart';
-import '../widgets/neon_visualizer.dart';
+import '../widgets/cyber_ai_core.dart';
 import '../widgets/glass_container.dart';
+import '../widgets/cyber_button.dart';
 import '../widgets/status_badge.dart';
 import 'chat_screen.dart';
 import 'character_screen.dart';
@@ -26,57 +27,91 @@ class HomeScreen extends StatelessWidget {
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        title: Text("LYRA AI"),
+        centerTitle: true,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: neon.withOpacity(0.18),
+                border: Border.all(color: neon.withOpacity(0.5)),
+                boxShadow: [
+                  BoxShadow(color: neon.withOpacity(0.4), blurRadius: 10),
+                ],
+              ),
+              child: Icon(Icons.bolt_rounded, size: 16, color: neon),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              "LYRA AI",
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                letterSpacing: 2.5,
+                fontSize: 19,
+                color: Colors.white,
+                shadows: [
+                  Shadow(color: neon.withOpacity(0.6), blurRadius: 16),
+                ],
+              ),
+            ),
+          ],
+        ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.history_rounded),
-            onPressed: () {
+          _buildAppBarIconButton(
+            icon: Icons.history_rounded,
+            tooltip: "Chat History",
+            onTap: () {
               Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatScreen()));
             },
           ),
-          IconButton(
-            icon: const Icon(Icons.psychology_rounded),
-            onPressed: () {
+          _buildAppBarIconButton(
+            icon: Icons.psychology_rounded,
+            tooltip: "Memory Digest",
+            onTap: () {
               Navigator.push(context, MaterialPageRoute(builder: (_) => const MemoryScreen()));
             },
           ),
-          IconButton(
-            icon: const Icon(Icons.tune_rounded),
-            onPressed: () {
+          _buildAppBarIconButton(
+            icon: Icons.tune_rounded,
+            tooltip: "Settings",
+            onTap: () {
               Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
             },
           ),
+          const SizedBox(width: 8),
         ],
       ),
       body: Stack(
         children: [
-          // Background ambient neon glows (No static images)
+          // Cyberpunk Dynamic Neon Backlight Blobs (No static images)
           Positioned(
-            top: -80,
-            right: -80,
+            top: -100,
+            right: -100,
             child: Container(
-              width: 260,
-              height: 260,
+              width: 300,
+              height: 300,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: neon.withOpacity(0.12),
+                color: neon.withOpacity(0.14),
                 boxShadow: [
-                  BoxShadow(color: neon.withOpacity(0.2), blurRadius: 100, spreadRadius: 40),
+                  BoxShadow(color: neon.withOpacity(0.24), blurRadius: 120, spreadRadius: 60),
                 ],
               ),
             ),
           ),
           Positioned(
-            bottom: -60,
-            left: -60,
+            bottom: -80,
+            left: -80,
             child: Container(
-              width: 240,
-              height: 240,
+              width: 280,
+              height: 280,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: theme.secondaryColor.withOpacity(0.12),
                 boxShadow: [
-                  BoxShadow(color: theme.secondaryColor.withOpacity(0.2), blurRadius: 90, spreadRadius: 30),
+                  BoxShadow(color: theme.secondaryColor.withOpacity(0.2), blurRadius: 110, spreadRadius: 50),
                 ],
               ),
             ),
@@ -84,118 +119,120 @@ class HomeScreen extends StatelessWidget {
 
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
               child: Column(
                 children: [
-                  const SizedBox(height: 10),
-                  // Character Selector Chip Bar
-                  GestureDetector(
+                  const SizedBox(height: 8),
+
+                  // 1. Interactive Character / Persona Pill
+                  CyberButton(
                     onTap: () {
                       Navigator.push(context, MaterialPageRoute(builder: (_) => const CharacterScreen()));
                     },
-                    child: GlassContainer(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                      borderRadius: 30,
-                      borderColor: neon.withOpacity(0.3),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.face_retouching_natural_rounded, size: 18, color: neon),
-                          const SizedBox(width: 8),
-                          Text(
-                            "Persona: ${voice.character.name} (${voice.character.gender.toUpperCase()})",
-                            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
-                          ),
-                          const SizedBox(width: 6),
-                          const Icon(Icons.arrow_forward_ios_rounded, size: 12, color: Colors.white54),
-                        ],
-                      ),
-                    ),
-                  ),
-
-                  const Spacer(),
-
-                  // Neon Visualizer Ring (Aura / Comet)
-                  Center(
-                    child: Stack(
-                      alignment: Alignment.center,
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                    borderRadius: 30,
+                    borderColor: neon.withOpacity(0.35),
+                    color: const Color(0xFF10141E).withOpacity(0.65),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        NeonVisualizer(
-                          neonColor: neon,
-                          isPulsing: voice.status == AssistantStatus.listening ||
-                              voice.status == AssistantStatus.speaking ||
-                              screenAgent.isExecuting,
-                          size: 240,
-                        ),
-                        // Inner mic interaction trigger
-                        GestureDetector(
-                          onTap: () {
-                            voice.startListening();
-                          },
-                          child: Container(
-                            width: 110,
-                            height: 110,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: RadialGradient(
-                                colors: [
-                                  neon.withOpacity(0.35),
-                                  const Color(0xFF131722),
-                                ],
-                              ),
-                              border: Border.all(color: neon.withOpacity(0.6), width: 2),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: neon.withOpacity(voice.status == AssistantStatus.listening ? 0.6 : 0.2),
-                                  blurRadius: 25,
-                                  spreadRadius: 2,
-                                ),
-                              ],
-                            ),
-                            child: Icon(
-                              voice.status == AssistantStatus.listening
-                                  ? Icons.stop_rounded
-                                  : Icons.mic_rounded,
-                              size: 42,
-                              color: Colors.white,
-                            ),
+                        CircleAvatar(
+                          radius: 12,
+                          backgroundColor: neon.withOpacity(0.2),
+                          child: Icon(
+                            voice.character.gender == "female"
+                                ? Icons.favorite_rounded
+                                : Icons.security_rounded,
+                            size: 14,
+                            color: neon,
                           ),
                         ),
+                        const SizedBox(width: 10),
+                        Text(
+                          "${voice.character.name} (${voice.character.gender.toUpperCase()})",
+                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, letterSpacing: 0.5),
+                        ),
+                        const SizedBox(width: 8),
+                        const Icon(Icons.arrow_forward_ios_rounded, size: 12, color: Colors.white54),
                       ],
                     ),
                   ),
 
-                  const SizedBox(height: 35),
+                  const Spacer(),
+
+                  // 2. Central 3D Cyber AI Core & Audio Waves
+                  CyberAiCore(
+                    status: voice.status,
+                    neonColor: neon,
+                    onTap: () {
+                      voice.toggleListening();
+                    },
+                    size: 260,
+                  ),
+
+                  const SizedBox(height: 28),
+
+                  // 3. Status Badge Pill
                   StatusBadge(status: voice.status, neonColor: neon),
 
-                  const SizedBox(height: 16),
-                  Text(
-                    voice.currentStatusText,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Colors.white.withOpacity(0.85),
-                      fontWeight: FontWeight.w500,
-                    ),
+                  const SizedBox(height: 14),
+
+                  // 4. Live Status Text or Live Transcript
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 250),
+                    child: voice.lastUserTranscript.isNotEmpty && voice.status == AssistantStatus.listening
+                        ? Container(
+                            key: const ValueKey("live_transcript"),
+                            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: neon.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: neon.withOpacity(0.3)),
+                            ),
+                            child: Text(
+                              "“${voice.lastUserTranscript}”",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 14.5,
+                                fontStyle: FontStyle.italic,
+                                color: neon,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          )
+                        : Text(
+                            voice.currentStatusText,
+                            key: ValueKey(voice.currentStatusText),
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 15.5,
+                              color: Colors.white.withOpacity(0.88),
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
                   ),
 
                   const Spacer(),
 
-                  // Bottom Quick Actions Card
+                  // 5. Cyberpunk Floating Action Dock
                   GlassContainer(
-                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                    borderRadius: 24,
+                    borderColor: neon.withOpacity(0.25),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceAround,
                       children: [
-                        _buildActionButton(
+                        _buildNavDockItem(
+                          context: context,
                           icon: Icons.screen_search_desktop_rounded,
                           label: "Screen Agent",
-                          color: neon,
+                          accentColor: neon,
                           onTap: () async {
                             final active = await NativeChannel.isAccessibilityServiceActive();
                             if (!active) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text("Please enable Lyra Accessibility Service in Android Settings.")),
+                                const SnackBar(content: Text("Enable Lyra Accessibility Service in Android Settings.")),
                               );
                               NativeChannel.openAccessibilitySettings();
                               return;
@@ -204,10 +241,11 @@ class HomeScreen extends StatelessWidget {
                             screenAgent.executeScreenTask("Open settings and check storage");
                           },
                         ),
-                        _buildActionButton(
+                        _buildNavDockItem(
+                          context: context,
                           icon: Icons.layers_outlined,
                           label: "HUD Overlay",
-                          color: Colors.white70,
+                          accentColor: Colors.white70,
                           onTap: () async {
                             final hasPerm = await NativeChannel.checkOverlayPermission();
                             if (!hasPerm) {
@@ -218,10 +256,11 @@ class HomeScreen extends StatelessWidget {
                             }
                           },
                         ),
-                        _buildActionButton(
+                        _buildNavDockItem(
+                          context: context,
                           icon: Icons.chat_bubble_outline_rounded,
                           label: "Chat History",
-                          color: Colors.white70,
+                          accentColor: Colors.white70,
                           onTap: () {
                             Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatScreen()));
                           },
@@ -229,7 +268,7 @@ class HomeScreen extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 6),
                 ],
               ),
             ),
@@ -239,25 +278,46 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildActionButton({
+  Widget _buildAppBarIconButton({
     required IconData icon,
-    required String label,
-    required Color color,
+    required String tooltip,
     required VoidCallback onTap,
   }) {
-    return InkWell(
+    return CyberButton(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 24, color: color),
-            const SizedBox(height: 4),
-            Text(label, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600)),
-          ],
-        ),
+      padding: const EdgeInsets.all(8),
+      borderRadius: 12,
+      child: Icon(icon, size: 20, color: Colors.white70),
+    );
+  }
+
+  Widget _buildNavDockItem({
+    required BuildContext context,
+    required IconData icon,
+    required String label,
+    required Color accentColor,
+    required VoidCallback onTap,
+  }) {
+    return CyberButton(
+      onTap: onTap,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      borderRadius: 14,
+      color: Colors.transparent,
+      borderColor: Colors.transparent,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 24, color: accentColor),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: accentColor,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }

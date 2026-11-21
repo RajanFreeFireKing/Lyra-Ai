@@ -19,7 +19,7 @@ class StatusBadge extends StatelessWidget {
 
     switch (status) {
       case AssistantStatus.listening:
-        badgeColor = const Color(0xFF00FF88);
+        badgeColor = const Color(0xFF00FF9D);
         label = "LISTENING";
         icon = Icons.mic_rounded;
         break;
@@ -34,37 +34,52 @@ class StatusBadge extends StatelessWidget {
         icon = Icons.volume_up_rounded;
         break;
       case AssistantStatus.working:
-        badgeColor = const Color(0xFFB026FF);
+        badgeColor = const Color(0xFFBD00FF);
         label = "AGENT WORKING";
         icon = Icons.touch_app_rounded;
         break;
       case AssistantStatus.idle:
       default:
-        badgeColor = Colors.white.withOpacity(0.4);
+        badgeColor = Colors.white.withOpacity(0.5);
         label = "READY";
         icon = Icons.circle;
         break;
     }
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+    final isLive = status != AssistantStatus.idle;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6.5),
       decoration: BoxDecoration(
-        color: badgeColor.withOpacity(0.12),
+        color: badgeColor.withOpacity(isLive ? 0.16 : 0.08),
         borderRadius: BorderRadius.circular(30),
-        border: Border.all(color: badgeColor.withOpacity(0.4), width: 1.0),
+        border: Border.all(
+          color: badgeColor.withOpacity(isLive ? 0.6 : 0.25),
+          width: 1.2,
+        ),
+        boxShadow: isLive
+            ? [
+                BoxShadow(
+                  color: badgeColor.withOpacity(0.3),
+                  blurRadius: 14,
+                  spreadRadius: 0.5,
+                ),
+              ]
+            : null,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: badgeColor),
-          const SizedBox(width: 6),
+          Icon(icon, size: 13, color: badgeColor),
+          const SizedBox(width: 8),
           Text(
             label,
             style: TextStyle(
               color: badgeColor,
               fontSize: 11,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.2,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.4,
             ),
           ),
         ],

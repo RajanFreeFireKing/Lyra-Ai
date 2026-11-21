@@ -1,12 +1,13 @@
 class ApiConfig {
-  // STT Models
-  static const String sttLiveModel = "gemini-3.5-transcribe-live";
-  static const String sttClipModel = "gemini-3.5-transcribe";
+  // STT Models (Google AI Studio public endpoint)
+  static const String sttModel = "gemini-2.0-flash";
+  static const String sttLiveModel = "gemini-2.0-flash-exp";
+  static const String sttClipModel = "gemini-2.0-flash";
 
-  // TTS Models
-  static const String ttsExpressiveModel = "gemini-3.8-flash-tts";
-  static const String ttsExpressiveLiteModel = "gemini-3.8-flash-lite-tts";
-  static const String ttsLiveModel = "gemini-3.8-live";
+  // TTS Models (Google AI Studio public endpoint)
+  static const String ttsExpressiveModel = "gemini-2.0-flash";
+  static const String ttsExpressiveLiteModel = "gemini-2.0-flash-lite";
+  static const String ttsLiveModel = "gemini-2.0-flash-exp";
 
   // Agent S3 Automation Models
   static const String defaultPlannerModel = "openai/gpt-5.6-sol";
